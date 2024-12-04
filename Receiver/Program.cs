@@ -7,7 +7,7 @@ namespace Receiver;
 
 internal class Program
 {
-    private static void Main(string[] args)
+    private static async Task Main(string[] args)
     {
         if (args.Length != 2)
         {
@@ -21,13 +21,27 @@ internal class Program
         var udpClient = new UdpClient(listeningPort);
         Console.WriteLine($"Receiver is listening on port {listeningPort}");
 
-        var remoteEndpoint = new IPEndPoint(IPAddress.Any, 0);
+        var receiverSequenceNumber = (ushort)new Random().Next(1, ushort.MaxValue);
 
-        var data = udpClient.Receive(ref remoteEndpoint);
+        // Wait for handshake
+        Console.WriteLine("Waiting for handshake...");
+        var isConnected = await ConnectionManager.WaitForHandshake(udpClient, receiverSequenceNumber);
 
-        var packet = Packet.Deserialize(data);
+        if (isConnected)
+        {
+            Console.WriteLine("Handshake successful.");
+            // Proceed to receive data
+            var remoteEndpoint = new IPEndPoint(IPAddress.Any, 0);
 
-        var message = Encoding.UTF8.GetString(packet.Data);
-        Console.WriteLine($"Received message: {message}");
+            var result = await udpClient.ReceiveAsync();
+            var packet = Packet.Deserialize(result.Buffer);
+
+            var message = Encoding.UTF8.GetString(packet.Data);
+            Console.WriteLine($"Received message: {message}");
+        }
+        else
+        {
+            Console.WriteLine("Handshake failed.");
+        }
     }
 }

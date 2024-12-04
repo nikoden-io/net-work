@@ -1,4 +1,5 @@
-﻿using System.Net.Sockets;
+﻿using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using Shared;
 
@@ -6,7 +7,7 @@ namespace Sender;
 
 internal class Program
 {
-    private static void Main(string[] args)
+    private static async Task Main(string[] args)
     {
         if (args.Length != 3)
         {
@@ -20,24 +21,37 @@ internal class Program
 
         var udpClient = new UdpClient();
 
-        // For this step, we'll send "Hello World" placeholder data using the Packet structure
-        var message = "Hello World";
+        var senderSequenceNumber = (ushort)new Random().Next(1, ushort.MaxValue);
 
-        var packet = new Packet
+        var receiverEndpoint = new IPEndPoint(IPAddress.Parse(receiverIp), receiverPort);
+
+        // Initiate handshake
+        Console.WriteLine("Initiating handshake...");
+        var isConnected = await ConnectionManager.InitiateHandshake(udpClient, receiverEndpoint, senderSequenceNumber);
+
+        if (isConnected)
         {
-            TotalDataSize = (ushort)Encoding.UTF8.GetByteCount(message),
-            SequenceNumber = 0,
-            SYN = false,
-            ACK = false,
-            FIN = false,
-            RST = false,
-            Data = Encoding.UTF8.GetBytes(message)
-        };
+            Console.WriteLine("Handshake successful.");
+            // Proceed to send data
+            // For now, send "Hello World" as before
+            var message = "Hello World";
 
-        var packetBytes = packet.Serialize();
+            var packet = new Packet
+            {
+                TotalDataSize = (ushort)Encoding.UTF8.GetByteCount(message),
+                SequenceNumber = (ushort)(senderSequenceNumber + 1),
+                Data = Encoding.UTF8.GetBytes(message)
+            };
 
-        udpClient.Send(packetBytes, packetBytes.Length, receiverIp, receiverPort);
+            var packetBytes = packet.Serialize();
 
-        Console.WriteLine("Sent 'Hello World' packet to receiver.");
+            await udpClient.SendAsync(packetBytes, packetBytes.Length, receiverEndpoint);
+
+            Console.WriteLine("Sent data packet to receiver.");
+        }
+        else
+        {
+            Console.WriteLine("Handshake failed.");
+        }
     }
 }
