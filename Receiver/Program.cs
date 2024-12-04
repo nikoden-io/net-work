@@ -33,11 +33,42 @@ internal class Program
             // Proceed to receive data
             var remoteEndpoint = new IPEndPoint(IPAddress.Any, 0);
 
-            var result = await udpClient.ReceiveAsync();
-            var packet = Packet.Deserialize(result.Buffer);
+            while (true)
+            {
+                var result = await udpClient.ReceiveAsync();
+                var packet = Packet.Deserialize(result.Buffer);
 
-            var message = Encoding.UTF8.GetString(packet.Data);
-            Console.WriteLine($"Received message: {message}");
+                // Check for FIN flag to terminate connection
+                if (packet.FIN)
+                {
+                    Console.WriteLine("Received FIN. Sending FIN-ACK.");
+
+                    // Send FIN-ACK
+                    var finAckPacket = new Packet
+                    {
+                        FIN = true,
+                        ACK = true,
+                        SequenceNumber = packet.SequenceNumber,
+                        TotalDataSize = 0,
+                        Data = new byte[0]
+                    };
+                    var finAckBytes = finAckPacket.Serialize();
+                    await udpClient.SendAsync(finAckBytes, finAckBytes.Length, result.RemoteEndPoint);
+
+                    // Wait for final ACK from Sender
+                    var ackResult = await udpClient.ReceiveAsync();
+                    var finalAckPacket = Packet.Deserialize(ackResult.Buffer);
+
+                    Console.WriteLine(finalAckPacket.ACK
+                        ? "Received final ACK. Connection terminated gracefully."
+                        : "Did not receive final ACK. Connection termination may be incomplete.");
+
+                    break;
+                }
+
+                var message = Encoding.UTF8.GetString(packet.Data);
+                Console.WriteLine($"Received message: {message}");
+            }
         }
         else
         {
